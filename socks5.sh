@@ -83,10 +83,25 @@ for cmd in wget lsof; do
     }
 done
 
-# 检查并安装 ufw（适用于 Ubuntu/Debian）
-if [ "$PACKAGE_MANAGER" = "apt-get" ] && ! command -v ufw &> /dev/null; then
-    echo "未找到 ufw，正在安装..."
-    $PACKAGE_MANAGER install -y ufw
+# 检查并安装必要的防火墙工具
+if [ "$PACKAGE_MANAGER" = "apt-get" ]; then
+    # Ubuntu/Debian 系统
+    if ! command -v ufw &> /dev/null; then
+        echo "未找到 ufw，正在安装..."
+        $PACKAGE_MANAGER update -y
+        $PACKAGE_MANAGER install -y ufw
+    fi
+elif [ "$PACKAGE_MANAGER" = "yum" ]; then
+    # CentOS/RHEL 系统
+    if ! command -v firewall-cmd &> /dev/null; then
+        echo "未找到 firewall-cmd，正在安装..."
+        $PACKAGE_MANAGER install -y firewalld
+        systemctl start firewalld
+        systemctl enable firewalld
+    fi
+else
+    echo "不支持的系统，请手动安装防火墙工具。"
+    exit 1
 fi
 
 # 下载并设置Socks5二进制文件
