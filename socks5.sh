@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Socks5 & HTTP 代理安装脚本
+# Socks5 和 Nginx 安装脚本
 
 # 检查是否为root用户
 if [ "$EUID" -ne 0 ]; then
@@ -10,10 +10,10 @@ fi
 
 # 获取脚本参数
 AUTH_MODE=${1:-password}  # 认证模式：noauth（无认证）或 password（需要认证）
-SOCKS_PORT=${2:-9999}
-HTTP_PORT=${3:-3128}
-USER=${4:-caishen891}
-PASSWD=${5:-999999}
+PORT=${2:-9999}
+USER=${3:-caishen891}
+PASSWD=${4:-999999}
+NGINX_PORT=${5:-8080}
 
 # 如果认证模式是 noauth，则忽略用户名和密码
 if [ "$AUTH_MODE" = "noauth" ]; then
@@ -23,27 +23,27 @@ fi
 
 # 显示调试信息
 echo "当前认证模式: $AUTH_MODE"
-echo "Socks5端口: $SOCKS_PORT"
-echo "HTTP端口: $HTTP_PORT"
+echo "SOCKS5 端口: $PORT"
 echo "用户名: $USER"
 echo "密码: $PASSWD"
+echo "Nginx 端口: $NGINX_PORT"
 
 # 设置变量
 SOCKS_BIN="/usr/local/bin/socks"
 SERVICE_FILE="/etc/systemd/system/sockd.service"
 CONFIG_FILE="/etc/socks/config.yaml"
-SQUID_CONFIG="/etc/squid/squid.conf"
 PACKAGE_MANAGER=""
 FIREWALL_COMMAND=""
+NGINX_CONF="/etc/nginx/conf.d/proxy.conf"
 PYTHON_CMD="python3"
 
 # 确定包管理器和防火墙命令
 if command -v yum &> /dev/null; then
     PACKAGE_MANAGER="yum"
-    FIREWALL_COMMAND="firewall-cmd --add-port=$SOCKS_PORT/tcp --permanent && firewall-cmd --add-port=$HTTP_PORT/tcp --permanent && firewall-cmd --reload"
+    FIREWALL_COMMAND="firewall-cmd --add-port=$PORT/tcp --permanent && firewall-cmd --add-port=$NGINX_PORT/tcp --permanent && firewall-cmd --reload"
 elif command -v apt-get &> /dev/null; then
     PACKAGE_MANAGER="apt-get"
-    FIREWALL_COMMAND="ufw allow $SOCKS_PORT && ufw allow $HTTP_PORT"
+    FIREWALL_COMMAND="ufw allow $PORT && ufw allow $NGINX_PORT"
 else
     echo "不支持的系统，请手动安装所需的软件包并配置防火墙。"
     exit 1
@@ -63,26 +63,12 @@ else
 fi
 
 # 安装必要的软件包
-for cmd in wget lsof; do
+for cmd in wget lsof nginx; do
     command -v $cmd &> /dev/null || {
         echo "$cmd 未安装，正在安装..."
         $PACKAGE_MANAGER install -y $cmd
     }
 done
-
-# 安装Squid（检查不同名称）
-if ! command -v squid &> /dev/null; then
-    echo "尝试安装 Squid HTTP 代理..."
-    $PACKAGE_MANAGER update -y
-    $PACKAGE_MANAGER install -y squid || $PACKAGE_MANAGER install -y squid3 || {
-        echo "Squid 安装失败，请手动检查包名称。"
-        exit 1
-    }
-    systemctl enable squid
-    systemctl start squid
-else
-    echo "Squid 已经安装，跳过安装步骤。"
-fi
 
 # 下载并设置Socks5二进制文件
 if [ ! -f "$SOCKS_BIN" ]; then
@@ -128,7 +114,7 @@ import json
 import os
 
 auth_mode = "$AUTH_MODE"
-port = "$SOCKS_PORT"
+port = "$PORT"
 user = "$USER"
 passwd = "$PASSWD"
 config_file = "$CONFIG_FILE"
@@ -156,7 +142,7 @@ if auth_mode == "password":
     config["inbounds"][0]["settings"]["accounts"] = [{"user": user, "pass": passwd}]
 
 os.makedirs(os.path.dirname(config_file), exist_ok=True)
-with open(config_file, "w" ) as f:
+with open(config_file, "w") as f:
     json.dump(config, f, indent=4)
 
 EOF
@@ -169,32 +155,35 @@ else
     echo "用户 socksuser 已经存在"
 fi
 
+# 配置 Nginx
+if [ ! -f "$NGINX_CONF" ]; then
+    echo "配置 Nginx 以支持 HTTP 代理..."
+    cat <<EOF > "$NGINX_CONF"
+server {
+    listen $NGINX_PORT;
+
+    location / {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+else
+    echo "Nginx 配置文件已经存在，跳过配置。"
+fi
+
 # 启用并启动Socks5服务
 echo "启用并启动 Socks5 服务..."
 systemctl daemon-reload
 systemctl enable sockd.service
 systemctl start sockd.service
 
-# 安装Squid
-if ! command -v squid &> /dev/null; then
-    echo "安装 Squid HTTP 代理..."
-    $PACKAGE_MANAGER install -y squid
-    systemctl enable squid
-    systemctl start squid
-else
-    echo "Squid 已经安装，跳过安装步骤。"
-fi
-
-# 配置 Squid
-echo "配置 Squid..."
-cp $SQUID_CONFIG "${SQUID_CONFIG}.bak"
-
-cat <<EOF > $SQUID_CONFIG
-http_port $HTTP_PORT
-http_access allow all
-EOF
-
-systemctl restart squid
+# 启动 Nginx 服务
+echo "启动 Nginx 服务..."
+systemctl restart nginx
 
 # 配置防火墙
 echo "配置防火墙..."
@@ -203,19 +192,14 @@ eval "$FIREWALL_COMMAND"
 # 显示连接信息
 IPv4=$(curl -4 ip.sb)
 IPv6=$(curl -6 ip.sb 2>/dev/null)  # 忽略IPv6连接错误
-echo -e "Socks5代理连接信息:\nIPv4: $IPv4\nIPv6: $IPv6\n端口: $SOCKS_PORT"
-
-echo -e "HTTP代理连接信息:\nIPv4: $IPv4\nIPv6: $IPv6\nHTTP端口: $HTTP_PORT"
-
+HTTP_PROXY_URL="http://$USER:$PASSWD@$(hostname -I | awk '{print $1}'):${NGINX_PORT}"
+echo -e "IPv4: $IPv4\nIPv6: $IPv6\nSOCKS5 端口: $PORT"
 if [ "$AUTH_MODE" = "password" ]; then
-    echo -e "用户名: $USER\n密码: $PASSWD"
-    HTTP_URL="http://$USER:$PASSWD@$IPv4:$HTTP_PORT"
+    echo -e "SOCKS5 认证用户名: $USER\nSOCKS5 认证密码: $PASSWD"
 else
-    HTTP_URL="http://$IPv4:$HTTP_PORT"
-    echo -e "该代理使用无认证模式（noauth）"
+    echo -e "SOCKS5 代理使用无认证模式（noauth）"
 fi
-
-echo -e "HTTP代理URL: $HTTP_URL"
+echo -e "HTTP 代理地址: $HTTP_PROXY_URL"
 
 # 生成卸载脚本
 cat <<EOF > /usr/local/bin/uninstall_socks.sh
@@ -223,11 +207,11 @@ cat <<EOF > /usr/local/bin/uninstall_socks.sh
 
 # 停止服务
 systemctl stop sockd.service
-systemctl stop squid
+systemctl stop nginx
 
 # 禁用服务
 systemctl disable sockd.service
-systemctl disable squid
+systemctl disable nginx
 
 # 删除systemd服务文件
 rm /etc/systemd/system/sockd.service
@@ -238,9 +222,8 @@ rm /usr/local/bin/socks
 # 删除配置文件和目录
 rm -rf /etc/socks
 
-# 恢复Squid原始配置
-mv ${SQUID_CONFIG}.bak $SQUID_CONFIG
-systemctl restart squid
+# 删除Nginx配置文件
+rm /etc/nginx/conf.d/proxy.conf
 
 # 删除用户
 if id "socksuser" &>/dev/null; then
@@ -252,23 +235,23 @@ systemctl daemon-reload
 
 # 关闭防火墙端口（适用于CentOS/RedHat使用firewalld的情况）
 if command -v firewall-cmd &> /dev/null; then
-    firewall-cmd --remove-port=$SOCKS_PORT/tcp --permanent
-    firewall-cmd --remove-port=$HTTP_PORT/tcp --permanent
+    firewall-cmd --remove-port=$PORT/tcp --permanent
+    firewall-cmd --remove-port=$NGINX_PORT/tcp --permanent
     firewall-cmd --reload
 fi
 
 # 关闭防火墙端口（适用于Ubuntu/Debian使用ufw的情况）
 if command -v ufw &> /dev/null; then
-    ufw delete allow $SOCKS_PORT
-    ufw delete allow $HTTP_PORT
+    ufw delete allow $PORT
+    ufw delete allow $NGINX_PORT
 fi
 
-echo "Socks5和HTTP代理服务已停止并卸载"
+echo "Socks5代理和Nginx服务已停止并卸载"
 EOF
 
 # 设置卸载脚本的可执行权限
 chmod +x /usr/local/bin/uninstall_socks.sh
 
 # 提示用户卸载命令
-echo "代理安装成功！如需卸载，请执行以下命令："
+echo "Socks5代理和Nginx安装成功！如需卸载，请执行以下命令："
 echo "bash /usr/local/bin/uninstall_socks.sh"
