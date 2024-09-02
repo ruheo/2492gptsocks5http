@@ -192,7 +192,7 @@ eval "$FIREWALL_COMMAND"
 # 显示连接信息
 IPv4=$(curl -4 ip.sb)
 IPv6=$(curl -6 ip.sb 2>/dev/null)  # 忽略IPv6连接错误
-HTTP_PROXY_URL="http://$USER:$PASSWD@$(hostname -I | awk '{print $1}'):${NGINX_PORT}"
+HTTP_PROXY_URL="http://$USER:$PASSWD@$(curl -4 ip.sb):${NGINX_PORT}"
 echo -e "IPv4: $IPv4\nIPv6: $IPv6\nSOCKS5 端口: $PORT"
 if [ "$AUTH_MODE" = "password" ]; then
     echo -e "SOCKS5 认证用户名: $USER\nSOCKS5 认证密码: $PASSWD"
