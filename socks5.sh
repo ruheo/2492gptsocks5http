@@ -49,7 +49,7 @@ else
     exit 1
 fi
 
-# 检查Python环境
+# 检查 Python 环境
 if ! command -v $PYTHON_CMD &> /dev/null; then
     echo "未找到 Python3，正在安装..."
     $PACKAGE_MANAGER update -y
@@ -62,13 +62,27 @@ else
     echo "Python3 已经安装。"
 fi
 
+# 检查 Nginx 是否安装，如果没有安装则自动安装
+if ! command -v nginx &> /dev/null; then
+    echo "未找到 Nginx，正在安装..."
+    if [ "$PACKAGE_MANAGER" = "yum" ]; then
+        $PACKAGE_MANAGER install -y nginx
+    elif [ "$PACKAGE_MANAGER" = "apt-get" ]; then
+        $PACKAGE_MANAGER update -y
+        $PACKAGE_MANAGER install -y nginx
+    fi
+else
+    echo "Nginx 已经安装。"
+fi
+
 # 安装必要的软件包
-for cmd in wget lsof nginx; do
+for cmd in wget lsof; do
     command -v $cmd &> /dev/null || {
         echo "$cmd 未安装，正在安装..."
         $PACKAGE_MANAGER install -y $cmd
     }
 done
+
 
 # 下载并设置Socks5二进制文件
 if [ ! -f "$SOCKS_BIN" ]; then
