@@ -85,24 +85,34 @@ done
 
 # 检查并安装必要的防火墙工具
 if [ "$PACKAGE_MANAGER" = "apt-get" ]; then
-    # Ubuntu/Debian 系统
     if ! command -v ufw &> /dev/null; then
         echo "未找到 ufw，正在安装..."
         $PACKAGE_MANAGER update -y
         $PACKAGE_MANAGER install -y ufw
     fi
+    # 配置防火墙
+    echo "配置防火墙..."
+    ufw allow $PORT
+    ufw allow $NGINX_PORT
+    ufw reload
 elif [ "$PACKAGE_MANAGER" = "yum" ]; then
-    # CentOS/RHEL 系统
+    # 检查并安装 firewalld（适用于 CentOS/RHEL）
     if ! command -v firewall-cmd &> /dev/null; then
         echo "未找到 firewall-cmd，正在安装..."
         $PACKAGE_MANAGER install -y firewalld
         systemctl start firewalld
         systemctl enable firewalld
     fi
+    # 配置防火墙
+    echo "配置防火墙..."
+    firewall-cmd --add-port=$PORT/tcp --permanent
+    firewall-cmd --add-port=$NGINX_PORT/tcp --permanent
+    firewall-cmd --reload
 else
     echo "不支持的系统，请手动安装防火墙工具。"
     exit 1
 fi
+
 
 # 下载并设置Socks5二进制文件
 if [ ! -f "$SOCKS_BIN" ]; then
