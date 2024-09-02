@@ -10,10 +10,10 @@ fi
 
 # 获取脚本参数
 AUTH_MODE=${1:-password}  # 认证模式：noauth（无认证）或 password（需要认证）
-PORT=${2:-9999}           # SOCKS5 代理端口
-USER=${3:-caishen891}     # 认证用户名
-PASSWD=${4:-999999}       # 认证密码
-NGINX_PORT=$((PORT - 1))  # HTTP 代理端口，自动设置为 SOCKS5 端口减1
+PORT=${2:-9999}
+USER=${3:-caishen891}
+PASSWD=${4:-999999}
+NGINX_PORT=${5:-8080}
 
 # 如果认证模式是 noauth，则忽略用户名和密码
 if [ "$AUTH_MODE" = "noauth" ]; then
@@ -190,13 +190,12 @@ echo "配置防火墙..."
 eval "$FIREWALL_COMMAND"
 
 # 显示连接信息
-PUBLIC_IP=$(curl -s ifconfig.me)
-HTTP_PROXY_URL="http://$USER:$PASSWD@$PUBLIC_IP:$NGINX_PORT"
-echo -e "IPv4: $PUBLIC_IP"
-echo -e "SOCKS5 端口: $PORT"
+IPv4=$(curl -4 ip.sb)
+IPv6=$(curl -6 ip.sb 2>/dev/null)  # 忽略IPv6连接错误
+HTTP_PROXY_URL="http://$USER:$PASSWD@$(hostname -I | awk '{print $1}'):${NGINX_PORT}"
+echo -e "IPv4: $IPv4\nIPv6: $IPv6\nSOCKS5 端口: $PORT"
 if [ "$AUTH_MODE" = "password" ]; then
-    echo -e "SOCKS5 认证用户名: $USER"
-    echo -e "SOCKS5 认证密码: $PASSWD"
+    echo -e "SOCKS5 认证用户名: $USER\nSOCKS5 认证密码: $PASSWD"
 else
     echo -e "SOCKS5 代理使用无认证模式（noauth）"
 fi
