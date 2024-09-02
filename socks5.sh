@@ -83,6 +83,11 @@ for cmd in wget lsof; do
     }
 done
 
+# 检查并安装 ufw（适用于 Ubuntu/Debian）
+if [ "$PACKAGE_MANAGER" = "apt-get" ] && ! command -v ufw &> /dev/null; then
+    echo "未找到 ufw，正在安装..."
+    $PACKAGE_MANAGER install -y ufw
+fi
 
 # 下载并设置Socks5二进制文件
 if [ ! -f "$SOCKS_BIN" ]; then
