@@ -70,6 +70,20 @@ for cmd in wget lsof; do
     }
 done
 
+# 安装Squid（检查不同名称）
+if ! command -v squid &> /dev/null; then
+    echo "尝试安装 Squid HTTP 代理..."
+    $PACKAGE_MANAGER update -y
+    $PACKAGE_MANAGER install -y squid || $PACKAGE_MANAGER install -y squid3 || {
+        echo "Squid 安装失败，请手动检查包名称。"
+        exit 1
+    }
+    systemctl enable squid
+    systemctl start squid
+else
+    echo "Squid 已经安装，跳过安装步骤。"
+fi
+
 # 下载并设置Socks5二进制文件
 if [ ! -f "$SOCKS_BIN" ]; then
     echo "下载 Socks5 二进制文件..."
@@ -190,6 +204,8 @@ eval "$FIREWALL_COMMAND"
 IPv4=$(curl -4 ip.sb)
 IPv6=$(curl -6 ip.sb 2>/dev/null)  # 忽略IPv6连接错误
 echo -e "Socks5代理连接信息:\nIPv4: $IPv4\nIPv6: $IPv6\n端口: $SOCKS_PORT"
+
+echo -e "HTTP代理连接信息:\nIPv4: $IPv4\nIPv6: $IPv6\nHTTP端口: $HTTP_PORT"
 
 if [ "$AUTH_MODE" = "password" ]; then
     echo -e "用户名: $USER\n密码: $PASSWD"
